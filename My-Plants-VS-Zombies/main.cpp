@@ -28,6 +28,12 @@ IMAGE* imgPlants[Plant_Count][20];
 int curX, curY; // coordinate during dragging of the currently selected plant
 int curPlant; // 0: For not selecting, 1: Selecting first plant.
 
+struct Plant {
+	int type, frameIndex;
+};
+
+struct Plant map[3][9];
+
 bool fileExist(const char* name) {
 	FILE* fp = fopen(name, "r");
 	if (fp == NULL) {
@@ -47,6 +53,7 @@ void gameInit() {
 	loadimage(&imgBar, "res/bar5.png");
 
 	memset(imgPlants, 0, sizeof(imgPlants));
+	memset(map, 0, sizeof(map));
 
 	// Initialize Plant Cards
 	char name[64];
@@ -89,10 +96,24 @@ void updateWindow() {
 		putimage(x, y, &imgCards[i]);
 	}
 
+	
+	// Render plants putted to the block
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 9; j++) {
+			if (map[i][j].type > 0) {
+				int x = 256 + j * 81;
+				int y = 179 + i * 102 + 10;
+				int PlantType = map[i][j].type - 1;
+				int index = map[i][j].frameIndex;
+				putimagePNG(x, y, imgPlants[PlantType][index]);
+			}
+		}
+	}
+
 	// Render plants card during dragging
 	if (curPlant > 0) {
 		IMAGE* img = imgPlants[curPlant - 1][0];
-		putimagePNG(curX - img->getwidth() / 2, curY -img->getheight() / 2, img);
+		putimagePNG(curX - img->getwidth() / 2, curY - img->getheight() / 2, img);
 	}
 
 	EndBatchDraw(); // End double buffering
@@ -114,8 +135,68 @@ void userClick() {
 			curY = msg.y;
 		}
 		else if (msg.message == WM_LBUTTONUP) {
+			if (msg.x > 255 && msg.y > 179 && msg.y < 489) {
+				int row = (msg.y - 179) / 102;
+				int col = (msg.x - 256) / 81;
 
+				if (map[row][col].type == 0) {
+					map[row][col].type = curPlant;
+					map[row][col].frameIndex = 0;
+				}
+			}
+
+			curPlant = 0;
+			status = 0;
 		}
+	}
+}
+
+
+void updateGame() {
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 9; j++) {
+			if (map[i][j].type > 0) {
+				map[i][j].frameIndex++;
+				int PlantType = map[i][j].type - 1;
+				int index = map[i][j].frameIndex;
+				if (imgPlants[PlantType][index] == NULL) {
+					map[i][j].frameIndex = 0;
+				}
+			}
+		}
+	}
+}
+
+
+void startUI() {
+	IMAGE imgBg, imgMenu1, imgMenu2;
+	loadimage(&imgBg, "res/menu.png");
+	loadimage(&imgMenu1, "res/menu1.png");
+	loadimage(&imgMenu2, "res/menu2.png");
+
+	int flag = 0;
+	int click = 0;
+
+	while (1) {
+		BeginBatchDraw();
+
+		putimage(0, 0, &imgBg);
+		putimagePNG(474, 75, flag ? &imgMenu2 : &imgMenu1);
+
+		
+
+		ExMessage msg;
+		if (peekmessage(&msg)) {
+			if (msg.message == WM_LBUTTONDOWN &&
+					msg.x > 474 && msg.x < 474 + 300 && msg.y > 75 && msg.y < 75 + 140) {
+				flag = 1;
+			}
+			else if (msg.message == WM_LBUTTONUP && flag) {
+				return;
+			}
+		}
+
+		EndBatchDraw();
 	}
 }
 
@@ -124,10 +205,24 @@ void userClick() {
 int main(void) {
 	gameInit(); // initialize game
 
-	while (1) {
-		userClick();
+	startUI(); // intialize start UI
 
-		updateWindow(); // render the images using putimage
+	int timer = 0;
+	bool flag = true;
+	while (1) {
+		userClick(); // deal with user's inputs
+		timer += getDelay();
+		if (timer > 30) {
+			flag = true;
+			timer = 0;
+		}
+
+		if (flag) {
+			flag = false;
+			updateWindow(); // render the images using putimage
+			updateGame();
+		}
+		
 	}
 	
 
