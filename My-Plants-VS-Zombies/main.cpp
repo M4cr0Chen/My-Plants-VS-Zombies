@@ -40,6 +40,7 @@ struct sunshineBall {
 	int frameIndex; // Index for the current displaying picture
 	int destY; // Y-Coord for the destination of the falling sunshine
 	bool used; // Using or not
+	int timer; //
 };
 
 struct sunshineBall balls[10];
@@ -139,6 +140,15 @@ void updateWindow() {
 		putimagePNG(curX - img->getwidth() / 2, curY - img->getheight() / 2, img);
 	}
 
+	// Render the falling Sunshine
+	int ballMax = sizeof(balls) / sizeof(balls[0]);
+	for (int i = 0; i < ballMax; i++) {
+		if (balls[i].used) {
+			IMAGE* img = &imgSunshineBall[balls[i].frameIndex];
+			putimagePNG(balls[i].x, balls[i].y, img);
+		}
+	}
+
 	EndBatchDraw(); // End double buffering
 }
 
@@ -192,9 +202,32 @@ void createSunshine() {
 		balls[i].used = true;
 		balls[i].frameIndex = 0;
 		balls[i].x = 260 + rand() % (900 - 260); // 260 <-> 900
-		balls[i].y = 60
-			balls[i].destY = 200 + (rand() % 4) * 90;
+		balls[i].y = 60;
+		balls[i].destY = 200 + (rand() % 4) * 90;
+		balls[i].timer = 0;
 	}	
+}
+
+void updateSunshine() {
+	int ballMax = sizeof(balls) / sizeof(balls[0]);
+	for (int i = 0; i < ballMax; i++) {
+		if (balls[i].used) {
+			balls[i].frameIndex = (balls[i].frameIndex + 1) % 29; // Update new animation frame
+
+			if (balls[i].timer == 0) {
+				balls[i].y += 2; // Update Y-coordinates
+			}
+
+			// Stop at destY
+			if (balls[i].y >= balls[i].destY) {
+				// balls[i].used = false; Disappear Sunshine Code
+				balls[i].timer++;
+				if (balls[i].timer > 300) {
+					balls[i].used = false;
+				}
+			}
+		}
+	}
 }
 
 void updateGame() {
@@ -212,6 +245,7 @@ void updateGame() {
 	}
 
 	createSunshine(); // Generate Sunshine
+	updateSunshine(); // Update Sunshine Status
 }
 
 
