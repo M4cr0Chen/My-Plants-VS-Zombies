@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <graphics.h> // easyX graphics library
+#include <time.h>
 #include "tools.h"
 
 #define WIN_WIDTH 900
@@ -33,6 +34,18 @@ struct Plant {
 };
 
 struct Plant map[3][9];
+
+struct sunshineBall {
+	int x, y; // Coordinates for the X and Y Coord of sunshine when falling
+	int frameIndex; // Index for the current displaying picture
+	int destY; // Y-Coord for the destination of the falling sunshine
+	bool used; // Using or not
+};
+
+struct sunshineBall balls[10];
+
+IMAGE imgSunshineBall[29];
+
 
 bool fileExist(const char* name) {
 	FILE* fp = fopen(name, "r");
@@ -75,6 +88,16 @@ void gameInit() {
 		}
 	}
 	curPlant = 1;
+
+	memset(balls, 0, sizeof(balls));
+	for (int i = 0; i < 29; i++) {
+		sprintf_s(name, sizeof(name), "res/sunshine/%d.png", i + 1);
+		loadimage(&imgSunshineBall[i], name);
+	}
+
+	// random seed
+	srand(time(NULL));
+
 	// Create Game Graphical Window
 	initgraph(WIN_WIDTH, WIN_HEIGHT, 1);
 }
@@ -151,6 +174,28 @@ void userClick() {
 	}
 }
 
+void createSunshine() {
+	static int count = 0;
+	static int freq = 400;
+	count++;
+	if (count >= freq) {
+		freq = 200 + rand() % 200;
+		count = 0;
+
+		// Get one available sunshine from the pool
+		int ballMax = sizeof(balls) / sizeof(balls[0]);
+
+		int i = 0;
+		for (i = 0; i < ballMax && balls[i].used; i++);
+		if (i >= ballMax) return;
+
+		balls[i].used = true;
+		balls[i].frameIndex = 0;
+		balls[i].x = 260 + rand() % (900 - 260); // 260 <-> 900
+		balls[i].y = 60
+			balls[i].destY = 200 + (rand() % 4) * 90;
+	}	
+}
 
 void updateGame() {
 	for (int i = 0; i < 3; i++) {
@@ -165,6 +210,8 @@ void updateGame() {
 			}
 		}
 	}
+
+	createSunshine(); // Generate Sunshine
 }
 
 
