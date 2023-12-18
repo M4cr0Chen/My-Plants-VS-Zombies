@@ -12,6 +12,9 @@
 #include <time.h>
 #include "tools.h"
 
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
+
 #define WIN_WIDTH 900
 #define WIN_HEIGHT 600
 
@@ -46,6 +49,7 @@ struct sunshineBall {
 struct sunshineBall balls[10];
 
 IMAGE imgSunshineBall[29];
+int sunshine;
 
 
 bool fileExist(const char* name) {
@@ -89,6 +93,7 @@ void gameInit() {
 		}
 	}
 	curPlant = 1;
+	sunshine = 50;
 
 	memset(balls, 0, sizeof(balls));
 	for (int i = 0; i < 29; i++) {
@@ -101,6 +106,18 @@ void gameInit() {
 
 	// Create Game Graphical Window
 	initgraph(WIN_WIDTH, WIN_HEIGHT, 1);
+
+	// Setup font
+	LOGFONT f;
+	gettextstyle(&f);
+	f.lfHeight = 30;
+	f.lfWidth = 15;
+	strcpy(f.lfFaceName, "Segoe UI Black");
+	f.lfQuality = ANTIALIASED_QUALITY; // Font Anti-aliasing Effect
+
+	settextstyle(&f); // Set the font
+	setbkmode(TRANSPARENT); // Set Background Mode: Transparent
+	setcolor(BLACK);
 }
 
 // render the background image when initializing
@@ -149,7 +166,29 @@ void updateWindow() {
 		}
 	}
 
+	char scoreText[8];
+	sprintf_s(scoreText, sizeof(scoreText), "%d", sunshine);
+	outtextxy(280, 67, scoreText); // Output Score
+
 	EndBatchDraw(); // End double buffering
+}
+
+void collectSunshine(ExMessage* msg) {
+	int count = sizeof(balls) / sizeof(balls[0]);
+	int w = imgSunshineBall[0].getwidth();
+	int h = imgSunshineBall[0].getheight();
+	for (int i = 0; i < count; i++) {
+		if (balls[i].used) {
+			int x = balls[i].x;
+			int y = balls[i].y;
+			if (msg->x > x && msg->x < x + w &&
+				msg->y > y && msg->y < y + h) {
+				balls[i].used = false;
+				sunshine += 25;
+				mciSendString("play res/sunshine.mp3", 0, 0, 0);
+			}
+		}
+	}
 }
 
 void userClick() {
@@ -161,6 +200,9 @@ void userClick() {
 				int index = (msg.x - 338) / 65;
 				status = 1;
 				curPlant = index + 1;
+			}
+			else {
+				collectSunshine(&msg);
 			}
 		}
 		else if (msg.message == WM_MOUSEMOVE && status == 1) {
