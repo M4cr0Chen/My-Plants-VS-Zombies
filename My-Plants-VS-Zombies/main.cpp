@@ -52,6 +52,16 @@ IMAGE imgSunshineBall[29];
 int sunshine;
 
 
+struct zm {
+	int x, y;
+	int frameIndex;
+	bool used;
+	int speed;
+};
+struct zm zms[10];
+IMAGE imgZM[22];
+
+
 bool fileExist(const char* name) {
 	FILE* fp = fopen(name, "r");
 	if (fp == NULL) {
@@ -118,6 +128,28 @@ void gameInit() {
 	settextstyle(&f); // Set the font
 	setbkmode(TRANSPARENT); // Set Background Mode: Transparent
 	setcolor(BLACK);
+
+
+
+	// Initialize zombies data
+	memset(zms, 0, sizeof(zms));
+	for (int i = 0; i < 22; i++) {
+		sprintf_s(name, sizeof(name), "res/zm/%d.png", i);
+		loadimage(&imgZM[i], name); 
+	}
+}
+
+void drawZM() {
+	int zmCount = sizeof(zms) / sizeof(zms[0]);
+	for (int i = 0; i < zmCount; i++) {
+		if (zms[i].used) {
+			IMAGE* img = &imgZM[zms[i].frameIndex];
+			putimagePNG(
+				zms[i].x, 
+				zms[i].y-img->getheight(), 
+				img);
+		}
+	}
 }
 
 // render the background image when initializing
@@ -169,6 +201,10 @@ void updateWindow() {
 	char scoreText[8];
 	sprintf_s(scoreText, sizeof(scoreText), "%d", sunshine);
 	outtextxy(280, 67, scoreText); // Output Score
+
+
+	drawZM();
+
 
 	EndBatchDraw(); // End double buffering
 }
@@ -272,6 +308,44 @@ void updateSunshine() {
 	}
 }
 
+void createZM() {
+	static int zmFreq = 500;
+	static int count = 0;
+	count++;
+	if (count > zmFreq) {
+		count = 0;
+		zmFreq = rand() % 200 + 300;
+
+		int i;
+		int zmMax = sizeof(zms) / sizeof(zms[0]);
+		for (i = 0; i < zmMax && zms[i].used; i++) {
+			if (i < zmMax) {
+				zms[i].used = true;
+				zms[i].x = WIN_WIDTH;
+				zms[i].y = 172 + (1 + rand() % 3) * 100;
+				zms[i].speed = 5;
+			}
+		}
+	}
+}
+
+void updateZM() {
+	int zmMax = sizeof(zms) / sizeof(zms[0]);
+
+	// Update zombies' location
+	for (int i = 0; i < zmMax; i++) {
+		if (zms[i].used) {
+			zms[i].x -= zms[i].speed;
+
+			if (zms[i].x < 170) {
+				printf("GAME OVER \n");
+				MessageBox(NULL, "over", "over", 0); // Need further optimization
+				exit(0); // Need further optimization
+			}
+		}
+	}
+}
+
 void updateGame() {
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
@@ -288,6 +362,9 @@ void updateGame() {
 
 	createSunshine(); // Generate Sunshine
 	updateSunshine(); // Update Sunshine Status
+	
+	createZM(); // Generate Zombies
+	updateZM(); // Update Zombies Status
 }
 
 
