@@ -134,7 +134,7 @@ void gameInit() {
 	// Initialize zombies data
 	memset(zms, 0, sizeof(zms));
 	for (int i = 0; i < 22; i++) {
-		sprintf_s(name, sizeof(name), "res/zm/%d.png", i);
+		sprintf_s(name, sizeof(name), "res/zm/%d.png", i+1);
 		loadimage(&imgZM[i], name); 
 	}
 }
@@ -318,14 +318,16 @@ void createZM() {
 
 		int i;
 		int zmMax = sizeof(zms) / sizeof(zms[0]);
-		for (i = 0; i < zmMax && zms[i].used; i++) {
-			if (i < zmMax) {
-				zms[i].used = true;
-				zms[i].x = WIN_WIDTH;
-				zms[i].y = 172 + (1 + rand() % 3) * 100;
-				zms[i].speed = 5;
-			}
+
+		for (i = 0; i < zmMax && zms[i].used; i++);
+
+		if (i < zmMax) {
+			zms[i].used = true;
+			zms[i].x = WIN_WIDTH;
+			zms[i].y = 172 + (1 + rand() % 3) * 100;
+			zms[i].speed = 1;
 		}
+		
 	}
 }
 
