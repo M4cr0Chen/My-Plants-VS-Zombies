@@ -35,6 +35,7 @@ int curPlant; // 0: For not selecting, 1: Selecting first plant.
 
 struct Plant {
 	int type, frameIndex;
+	int x, y;
 };
 
 struct Plant map[3][9];
@@ -62,6 +63,7 @@ struct zm {
 	bool used;
 	float speed;
 	int row;
+	int health;
 };
 struct zm zms[10];
 IMAGE imgZM[22];
@@ -73,10 +75,16 @@ struct bullet {
 	int row;
 	bool used;
 	int speed;
+	bool blast;
+	int frameIndex;
 };
 
 struct bullet bullets[30];
 IMAGE imgBulletNormal;
+IMAGE imgBulletBlast[4];
+
+int bulletsCount = sizeof(bullets) / sizeof(bullets[0]);
+int zombiesCount = sizeof(zms) / sizeof(zms[0]);
 
 
 bool fileExist(const char* name) {
@@ -158,6 +166,15 @@ void gameInit() {
 	// Initialize bullets
 	loadimage(&imgBulletNormal, "res/bullets/bullet_normal.png");
 	memset(bullets, 0, sizeof(bullets));
+
+	// Initialize bullets' frame image array
+	loadimage(&imgBulletBlast[3], "res/bullets/bullet_blast.png");
+	for (int i = 0; i < 3; i++) {
+		float k = (i + 1) * 0.2;
+		loadimage(&imgBulletBlast[i], "res/bullets/bullet_blast.png",
+			imgBulletBlast[3].getwidth() * k,
+			imgBulletBlast[3].getheight() * k, true);
+	}
 }
 
 void drawZM() {
@@ -176,7 +193,17 @@ void drawZM() {
 void drawBullets() {
 	int bulletMax = sizeof(bullets) / sizeof(bullets[0]);
 	for (int i = 0; i < bulletMax; i++) {
-		putimagePNG(bullets[i].x, bullets[i].y, &imgBulletNormal);
+		if (bullets[i].used) {
+			if (bullets[i].blast) {
+				// Update blast frameindex
+				IMAGE* img = &imgBulletBlast[bullets[i].frameIndex];
+				putimagePNG(bullets[i].x, bullets[i].y, img);
+			}
+			else {
+				putimagePNG(bullets[i].x, bullets[i].y, &imgBulletNormal);
+			}
+		}
+		
 	}
 }
 
@@ -202,11 +229,11 @@ void updateWindow() {
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
 			if (map[i][j].type > 0) {
-				int x = 256 + j * 81;
-				int y = 179 + i * 102 + 10;
+				map[i][j].x = 256 + j * 81;
+				map[i][j].y = 179 + i * 102 + 10;
 				int PlantType = map[i][j].type - 1;
 				int index = map[i][j].frameIndex;
-				putimagePNG(x, y, imgPlants[PlantType][index]);
+				putimagePNG(map[i][j].x, map[i][j].y, imgPlants[PlantType][index]);
 			}
 		}
 	}
@@ -231,9 +258,9 @@ void updateWindow() {
 	outtextxy(280, 67, scoreText); // Output Score
 
 
-	drawZM();
+	drawZM(); // Render zombie movement
 
-	drawBullets();
+	drawBullets(); // Render flying bullets
 
 	EndBatchDraw(); // End double buffering
 }
@@ -349,8 +376,8 @@ void updateSunshine() {
 			float destY = 0;
 			float destX = 262;
 			float angle = atan((balls[i].y - destY) / (balls[i].x - destX));
-			balls[i].xoff = 4 * cos(angle);
-			balls[i].yoff = 4 * sin(angle);
+			balls[i].xoff = 10 * cos(angle);
+			balls[i].yoff = 10 * sin(angle);
 
 			balls[i].x -= balls[i].xoff;
 			balls[i].y -= balls[i].yoff;
@@ -364,12 +391,12 @@ void updateSunshine() {
 }
 
 void createZM() {
-	static int zmFreq = 300;
+	static int zmFreq = 10;
 	static int count = 0;
 	count++;
 	if (count > zmFreq) {
 		count = 0;
-		zmFreq = rand() % 200 + 450;
+		zmFreq = rand() % 200 + 300;
 
 		int i;
 		int zmMax = sizeof(zms) / sizeof(zms[0]);
@@ -381,7 +408,8 @@ void createZM() {
 			zms[i].x = WIN_WIDTH;
 			zms[i].row = rand() % 3;
 			zms[i].y = 172 + (1 + zms[i].row) * 100;
-			zms[i].speed = 0.6;
+			zms[i].speed = 1;
+			zms[i].health = 100;
 		}
 	}
 }
@@ -434,36 +462,56 @@ void shoot() {
 
 	int dangerX = WIN_WIDTH - imgZM[0].getwidth();
 
-	// Justify if there's a zombie ahead to shoot
-	for (int i = 0; i < zombiesCount; i++) {
-		if (zms[i].used
-			/* && zms[i].x < dangerX
-			&& zms[i].x > imgZM[0].getwidth()*/) {
-			lines[zms[i].row] = 1;
-		}
-	}
-
+	
+	// Traverse all plants stored in map[3][9]
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
-			if (map[i][j].type == Peashooter + 1 && lines[i]) {
-				static int count = 0;
-				count++;
-				// Shoot frequency
-				if (count > 20) {
-					count = 0;
+			
+			// If the plant is a peashooter
+			if (map[i][j].type == Peashooter + 1 /*&& lines[i]*/ ) {
 
-					int k;
-					for (k = 0; k < bulletMax && bullets[k].used; k++);
-					if (k < bulletMax) {
-						bullets[k].used = true;
-						bullets[k].row = i;
-						bullets[k].speed = 4;
+				// Justify if there's a zombie ahead to shoot
+				// Traverse all zombies stored in zmks[10]
+				for (int k = 0; k < zombiesCount; k++) {
+					// Attribute Zombie's lines[]
+					if (zms[k].used // This zombie is spawned
+						&& zms[k].x > map[i][j].x // This zombie is ahead of the plant
+						&& zms[k].x < WIN_WIDTH // This zombie is within the screen
+						/* && zms[i].x < dangerX
+						&& zms[i].x > imgZM[0].getwidth()*/) {
+						lines[zms[k].row] = 1; // This zombie is on the row to be shooted
+					}
 
-						int zwX = 256 + j * 81;
-						int zwY = 179 + i * 102 + 14;
-						// Calculate x y coord of bullet when first shooted
-						bullets[k].x = zwX + imgPlants[map[i][j].type - 1][0]->getwidth() - 10;
-						bullets[k].y = zwY + 5;
+					// Justify shoot or not
+					if (lines[i] // If there's a zombie on the row
+						&& zms[k].x > map[i][j].x // and if the zombie is ahead of the certain plant
+						&& zms[k].x < WIN_WIDTH) {
+
+						static int count = 0;
+						count++;
+
+						// Shoot frequency
+						if (count > 40) {
+							count = 0;
+
+							// Shooting bullet function below
+							int k;
+							for (k = 0; k < bulletMax && bullets[k].used; k++);
+							if (k < bulletMax) {
+								bullets[k].used = true;
+								bullets[k].row = i;
+								bullets[k].speed = 5;
+
+								bullets[k].blast = false;
+								bullets[k].frameIndex = 0;
+
+								int zwX = 256 + j * 81;
+								int zwY = 179 + i * 102 + 14;
+								// Calculate x y coord of bullet when first shooted
+								bullets[k].x = zwX + imgPlants[map[i][j].type - 1][0]->getwidth() - 10;
+								bullets[k].y = zwY + 5;
+							}
+						}
 					}
 				}
 			}
@@ -475,9 +523,40 @@ void updateBullets() {
 	int countMax = sizeof(bullets) / sizeof(bullets[0]);
 	for (int i = 0; i < countMax; i++) {
 		if (bullets[i].used) {
+			// Update flying bullet before any collision
 			bullets[i].x += bullets[i].speed;
 			if (bullets[i].x > WIN_WIDTH) {
 				bullets[i].used = false;
+			}
+
+			// After bullet collision with a zombie
+			if (bullets[i].blast) {
+				bullets[i].frameIndex++;
+				if (bullets[i].frameIndex >= 4) {
+					bullets[i].used = false;
+				}
+			}
+		}
+	}
+}
+
+void collisionDetection() {
+	for (int i = 0; i < bulletsCount; i++) {
+		// passes over non-qualified bullets in the pool
+		if (bullets[i].used == false || bullets[i].blast) continue;
+
+		for (int k = 0; k < zombiesCount; k++) {
+			// passes over non-qualified zombies in the pool
+			if (zms[k].used == false) continue;
+
+			int x1 = zms[k].x + 80; // left border
+			int x2 = zms[k].x + 110; // right border
+			int x = bullets[i].x; // bullet's x-coord
+
+			if (bullets[i].row == zms[k].row && x > x1 && x < x2) {
+				zms[k].health -= 10;
+				bullets[i].blast = true;
+				bullets[i].speed = 0;
 			}
 		}
 	}
@@ -505,6 +584,8 @@ void updateGame() {
 
 	shoot(); // Shoot peas bullet
 	updateBullets(); // Update bullet status
+
+	collisionDetection(); // Detect collision of bullets and zombies
 }
 
 
