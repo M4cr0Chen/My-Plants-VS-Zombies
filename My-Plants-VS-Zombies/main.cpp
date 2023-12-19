@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <graphics.h> // easyX graphics library
 #include <time.h>
+#include <math.h>
 #include "tools.h"
 
 #include <mmsystem.h>
@@ -44,6 +45,9 @@ struct sunshineBall {
 	int destY; // Y-Coord for the destination of the falling sunshine
 	bool used; // Using or not
 	int timer; //
+
+	float xoff;
+	float yoff;
 };
 
 struct sunshineBall balls[10];
@@ -53,13 +57,26 @@ int sunshine;
 
 
 struct zm {
-	int x, y;
+	float x, y;
 	int frameIndex;
 	bool used;
-	int speed;
+	float speed;
+	int row;
 };
 struct zm zms[10];
 IMAGE imgZM[22];
+
+
+// Data Structure for the bullet
+struct bullet {
+	int x, y;
+	int row;
+	bool used;
+	int speed;
+};
+
+struct bullet bullets[30];
+IMAGE imgBulletNormal;
 
 
 bool fileExist(const char* name) {
@@ -137,6 +154,10 @@ void gameInit() {
 		sprintf_s(name, sizeof(name), "res/zm/%d.png", i+1);
 		loadimage(&imgZM[i], name); 
 	}
+
+	// Initialize bullets
+	loadimage(&imgBulletNormal, "res/bullets/bullet_normal.png");
+	memset(bullets, 0, sizeof(bullets));
 }
 
 void drawZM() {
@@ -149,6 +170,13 @@ void drawZM() {
 				zms[i].y-img->getheight(), 
 				img);
 		}
+	}
+}
+
+void drawBullets() {
+	int bulletMax = sizeof(bullets) / sizeof(bullets[0]);
+	for (int i = 0; i < bulletMax; i++) {
+		putimagePNG(bullets[i].x, bullets[i].y, &imgBulletNormal);
 	}
 }
 
@@ -192,7 +220,7 @@ void updateWindow() {
 	// Render the falling Sunshine
 	int ballMax = sizeof(balls) / sizeof(balls[0]);
 	for (int i = 0; i < ballMax; i++) {
-		if (balls[i].used) {
+		if (balls[i].used || balls[i].xoff) {
 			IMAGE* img = &imgSunshineBall[balls[i].frameIndex];
 			putimagePNG(balls[i].x, balls[i].y, img);
 		}
@@ -205,6 +233,7 @@ void updateWindow() {
 
 	drawZM();
 
+	drawBullets();
 
 	EndBatchDraw(); // End double buffering
 }
@@ -220,8 +249,15 @@ void collectSunshine(ExMessage* msg) {
 			if (msg->x > x && msg->x < x + w &&
 				msg->y > y && msg->y < y + h) {
 				balls[i].used = false;
-				sunshine += 25;
+				// sunshine += 25;
 				mciSendString("play res/sunshine.mp3", 0, 0, 0);
+
+				// Setup sunshineBall's xoff and yoff
+				float destY = 0;
+				float destX = 262;
+				float angle = atan((y - destY) / (x - destX));
+				balls[i].xoff = 4 * cos(angle);
+				balls[i].yoff = 4 * sin(angle);
 			}
 		}
 	}
@@ -283,7 +319,10 @@ void createSunshine() {
 		balls[i].y = 60;
 		balls[i].destY = 200 + (rand() % 4) * 90;
 		balls[i].timer = 0;
-	}	
+		balls[i].xoff = 0;
+		balls[i].yoff = 0;
+
+	}
 }
 
 void updateSunshine() {
@@ -304,17 +343,33 @@ void updateSunshine() {
 					balls[i].used = false;
 				}
 			}
+		} // sunshineBall flying after being collected
+		else if (balls[i].xoff) {
+			// Setup sunshineBall's xoff and yoff
+			float destY = 0;
+			float destX = 262;
+			float angle = atan((balls[i].y - destY) / (balls[i].x - destX));
+			balls[i].xoff = 4 * cos(angle);
+			balls[i].yoff = 4 * sin(angle);
+
+			balls[i].x -= balls[i].xoff;
+			balls[i].y -= balls[i].yoff;
+			if (balls[i].y < 0 || balls[i].x < 262) {
+				balls[i].xoff = 0;
+				balls[i].yoff = 0;
+				sunshine += 25;
+			}
 		}
 	}
 }
 
 void createZM() {
-	static int zmFreq = 500;
+	static int zmFreq = 300;
 	static int count = 0;
 	count++;
 	if (count > zmFreq) {
 		count = 0;
-		zmFreq = rand() % 200 + 300;
+		zmFreq = rand() % 200 + 450;
 
 		int i;
 		int zmMax = sizeof(zms) / sizeof(zms[0]);
@@ -324,25 +379,105 @@ void createZM() {
 		if (i < zmMax) {
 			zms[i].used = true;
 			zms[i].x = WIN_WIDTH;
-			zms[i].y = 172 + (1 + rand() % 3) * 100;
-			zms[i].speed = 1;
+			zms[i].row = rand() % 3;
+			zms[i].y = 172 + (1 + zms[i].row) * 100;
+			zms[i].speed = 0.6;
 		}
-		
 	}
 }
 
 void updateZM() {
 	int zmMax = sizeof(zms) / sizeof(zms[0]);
 
-	// Update zombies' location
-	for (int i = 0; i < zmMax; i++) {
-		if (zms[i].used) {
-			zms[i].x -= zms[i].speed;
+	static int count = 0;
 
-			if (zms[i].x < 170) {
-				printf("GAME OVER \n");
-				MessageBox(NULL, "over", "over", 0); // Need further optimization
-				exit(0); // Need further optimization
+	count++;
+
+	// Zombie's frequency each step to the other
+	if (count >= 3) {
+		count = 0;
+
+		// Update zombies' location
+		for (int i = 0; i < zmMax; i++) {
+			if (zms[i].used) {
+				zms[i].x -= zms[i].speed; // Zombie's horizontal movement per step
+
+				if (zms[i].x < 170) {
+					printf("GAME OVER \n");
+					MessageBox(NULL, "over", "over", 0); // Need further optimization
+					exit(0); // Need further optimization
+				}
+			}
+		}
+	}
+
+	static int zombieCount = 0;
+	zombieCount++;
+
+	// Zombie's animation speed
+	if (zombieCount > 4) {
+		zombieCount = 0;
+
+		// Update zombie frameIndex
+		for (int i = 0; i < zmMax; i++) {
+			if (zms[i].used) {
+				zms[i].frameIndex = (zms[i].frameIndex + 1) % 22;
+			}
+		}
+	}	
+}
+
+void shoot() {
+	int lines[3] = { 0 };
+	int zombiesCount = sizeof(zms) / sizeof(zms[0]);
+	int bulletMax = sizeof(bullets) / sizeof(bullets[0]);
+
+	int dangerX = WIN_WIDTH - imgZM[0].getwidth();
+
+	// Justify if there's a zombie ahead to shoot
+	for (int i = 0; i < zombiesCount; i++) {
+		if (zms[i].used
+			/* && zms[i].x < dangerX
+			&& zms[i].x > imgZM[0].getwidth()*/) {
+			lines[zms[i].row] = 1;
+		}
+	}
+
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 9; j++) {
+			if (map[i][j].type == Peashooter + 1 && lines[i]) {
+				static int count = 0;
+				count++;
+				// Shoot frequency
+				if (count > 20) {
+					count = 0;
+
+					int k;
+					for (k = 0; k < bulletMax && bullets[k].used; k++);
+					if (k < bulletMax) {
+						bullets[k].used = true;
+						bullets[k].row = i;
+						bullets[k].speed = 4;
+
+						int zwX = 256 + j * 81;
+						int zwY = 179 + i * 102 + 14;
+						// Calculate x y coord of bullet when first shooted
+						bullets[k].x = zwX + imgPlants[map[i][j].type - 1][0]->getwidth() - 10;
+						bullets[k].y = zwY + 5;
+					}
+				}
+			}
+		}
+	}
+}
+
+void updateBullets() {
+	int countMax = sizeof(bullets) / sizeof(bullets[0]);
+	for (int i = 0; i < countMax; i++) {
+		if (bullets[i].used) {
+			bullets[i].x += bullets[i].speed;
+			if (bullets[i].x > WIN_WIDTH) {
+				bullets[i].used = false;
 			}
 		}
 	}
@@ -367,6 +502,9 @@ void updateGame() {
 	
 	createZM(); // Generate Zombies
 	updateZM(); // Update Zombies Status
+
+	shoot(); // Shoot peas bullet
+	updateBullets(); // Update bullet status
 }
 
 
