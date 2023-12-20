@@ -36,6 +36,9 @@ int curPlant; // 0: For not selecting, 1: Selecting first plant.
 struct Plant {
 	int type, frameIndex;
 	int x, y;
+	bool caught;
+	int health;
+	int shooting; // Status of shooting or not, 0: There's 1 zombie ahead; >0: More than 1 zombies ahead
 };
 
 struct Plant map[3][9];
@@ -64,9 +67,13 @@ struct zm {
 	float speed;
 	int row;
 	int health;
+	bool dead;
+	bool eating;
 };
 struct zm zms[10];
-IMAGE imgZM[22];
+IMAGE imgZM[22]; // zombie walking frames
+IMAGE imgZMDead[10]; // zombie dead frames
+IMAGE imgZMEat[21]; // zommbie eating frames
 
 
 // Data Structure for the bullet
@@ -133,7 +140,7 @@ void gameInit() {
 	memset(balls, 0, sizeof(balls));
 	for (int i = 0; i < 29; i++) {
 		sprintf_s(name, sizeof(name), "res/sunshine/%d.png", i + 1);
-		loadimage(&imgSunshineBall[i], name);
+		loadimage(&imgSunshineBall[i], name); 
 	}
 
 	// random seed
@@ -175,13 +182,33 @@ void gameInit() {
 			imgBulletBlast[3].getwidth() * k,
 			imgBulletBlast[3].getheight() * k, true);
 	}
+
+	// Initialize zombie dead images
+	for (int i = 0; i < 10; i++) {
+		sprintf_s(name, sizeof(name), "res/zm_dead_fall/%d.png", i + 1);
+		loadimage(&imgZMDead[i], name);
+	}
+
+	// Initialize zombie eat images
+	for (int i = 0; i < 21; i++) {
+		sprintf_s(name, "res/zm/eat/%d.png", i + 1);
+		loadimage(&imgZMEat[i], name);
+	}
 }
 
 void drawZM() {
 	int zmCount = sizeof(zms) / sizeof(zms[0]);
 	for (int i = 0; i < zmCount; i++) {
 		if (zms[i].used) {
-			IMAGE* img = &imgZM[zms[i].frameIndex];
+			// IMAGE* img = &imgZM[zms[i].frameIndex];
+			// IMAGE* img = (zms[i].dead) ? imgZMDead : imgZM;
+			IMAGE* img = NULL;
+			if (zms[i].dead) img = imgZMDead;
+			else if (zms[i].eating) img = imgZMEat;
+			else img = imgZM;
+
+			img += zms[i].frameIndex;
+
 			putimagePNG(
 				zms[i].x, 
 				zms[i].y-img->getheight(), 
@@ -396,7 +423,7 @@ void createZM() {
 	count++;
 	if (count > zmFreq) {
 		count = 0;
-		zmFreq = rand() % 200 + 300;
+		zmFreq = rand() % 300 + 300;
 
 		int i;
 		int zmMax = sizeof(zms) / sizeof(zms[0]);
@@ -404,12 +431,14 @@ void createZM() {
 		for (i = 0; i < zmMax && zms[i].used; i++);
 
 		if (i < zmMax) {
+			memset(&zms[i], 0, sizeof(zms[i]));
 			zms[i].used = true;
 			zms[i].x = WIN_WIDTH;
 			zms[i].row = rand() % 3;
 			zms[i].y = 172 + (1 + zms[i].row) * 100;
 			zms[i].speed = 1;
 			zms[i].health = 100;
+			zms[i].dead = false;
 		}
 	}
 }
@@ -449,7 +478,22 @@ void updateZM() {
 		// Update zombie frameIndex
 		for (int i = 0; i < zmMax; i++) {
 			if (zms[i].used) {
-				zms[i].frameIndex = (zms[i].frameIndex + 1) % 22;
+				// Dying frames
+				if (zms[i].dead) {
+					zms[i].frameIndex++;
+
+					if (zms[i].frameIndex >= 10) {
+						zms[i].used = false;
+					}
+				}
+				// Eating frames
+				else if (zms[i].eating) {
+					zms[i].frameIndex = (zms[i].frameIndex + 1) % 21;
+				}
+				// Walking frames
+				else {
+					zms[i].frameIndex = (zms[i].frameIndex + 1) % 22;
+				}
 			}
 		}
 	}	
@@ -470,6 +514,19 @@ void shoot() {
 			// If the plant is a peashooter
 			if (map[i][j].type == Peashooter + 1 /*&& lines[i]*/ ) {
 
+				map[i][j].shooting = 0; // Peashooter only shoot to the first zombie
+				// Refresh the shooting when zombie died
+
+				// Bug fixed Log: To solve the bug that peashooter will shoot even if the zombies are at the back of the peashooter, I added another for loop that traverses each zombie and find their current x position,
+				//   and if any's x-coord < any peashooter's x-coord, then that peashooter will not shoot.
+				// However, I noticed a bug here which is how each peashooter's shoots at a same frequency, but the shooting peas got multiplied by the amount of zombies ahead of that peashooter. i.e. the more zombies on a same line the
+				//   faster each peashooter shoots. This is because the peashooter treats each zombie evenly, or in another sense for each single zombie peashooter shoots just as much as how it should shoot on a regular line.
+				//   This is not appropriate as we expected peashooter to shoot at a constant speed no matter how many zombies there are ahead of it.
+				// Bug is fixed by introducing a new field: int shooting. The peashooter only shoot when int shooting = 0, and for any other zombies after it since shooting++, they'll not fell into the case of shooting.
+				// This make the code to have a same logic as it is before adding the for k loop, which restrict the for k loop to only running once.
+
+				// Dealing zombies as a queue: Shooting them one by one.
+
 				// Justify if there's a zombie ahead to shoot
 				// Traverse all zombies stored in zmks[10]
 				for (int k = 0; k < zombiesCount; k++) {
@@ -485,10 +542,14 @@ void shoot() {
 					// Justify shoot or not
 					if (lines[i] // If there's a zombie on the row
 						&& zms[k].x > map[i][j].x // and if the zombie is ahead of the certain plant
-						&& zms[k].x < WIN_WIDTH) {
+						&& zms[k].x < WIN_WIDTH
+						&& map[i][j].shooting == 0 // Peashooter only shoot to the first zombie
+						) {
 
 						static int count = 0;
 						count++;
+
+						map[i][j].shooting++;  // Peashooter not allowed to shoot any else zombies
 
 						// Shoot frequency
 						if (count > 40) {
@@ -505,11 +566,11 @@ void shoot() {
 								bullets[k].blast = false;
 								bullets[k].frameIndex = 0;
 
-								int zwX = 256 + j * 81;
-								int zwY = 179 + i * 102 + 14;
+								int plantX = 256 + j * 81;
+								int plantY = 179 + i * 102 + 14;
 								// Calculate x y coord of bullet when first shooted
-								bullets[k].x = zwX + imgPlants[map[i][j].type - 1][0]->getwidth() - 10;
-								bullets[k].y = zwY + 5;
+								bullets[k].x = plantX + imgPlants[map[i][j].type - 1][0]->getwidth() - 10;
+								bullets[k].y = plantY + 5;
 							}
 						}
 					}
@@ -540,7 +601,7 @@ void updateBullets() {
 	}
 }
 
-void collisionDetection() {
+void checkBulletToZm() {
 	for (int i = 0; i < bulletsCount; i++) {
 		// passes over non-qualified bullets in the pool
 		if (bullets[i].used == false || bullets[i].blast) continue;
@@ -553,13 +614,61 @@ void collisionDetection() {
 			int x2 = zms[k].x + 110; // right border
 			int x = bullets[i].x; // bullet's x-coord
 
-			if (bullets[i].row == zms[k].row && x > x1 && x < x2) {
+			if (zms[k].dead == false && bullets[i].row == zms[k].row && x > x1 && x < x2) {
 				zms[k].health -= 10;
 				bullets[i].blast = true;
 				bullets[i].speed = 0;
+
+				if (zms[k].health <= 0) {
+					zms[k].dead = true;
+					zms[k].speed = 0;
+					zms[k].frameIndex = 0;
+				}
+				break;
 			}
 		}
 	}
+}
+
+void checkZmToPlant() {
+	int zCount = sizeof(zms) / sizeof(zms[0]);
+	for (int i = 0; i < zCount; i++) {
+		if (zms[i].dead) continue;
+
+		int row = zms[i].row;
+		for (int k = 0; k < 9; k++) {
+			if (map[row][k].type == 0) continue;
+
+			int plantX = 256 + k * 81;
+			int x1 = plantX + 10;
+			int x2 = plantX + 60;
+			int x3 = zms[i].x + 80;
+			
+			if (x3 > x1 && x3 < x2) {
+				if (map[row][k].caught) {
+					zms[i].frameIndex++;
+					map[row][k].health -= 10; // Plant health deduction when been eating
+					if (map[row][k].health <= 0) {
+						map[row][k].type = 0;
+						zms[i].eating = false;
+						zms[i].frameIndex = 0;
+						zms[i].speed = 1;
+					}
+				}
+				else {
+					map[row][k].caught = true;
+					map[row][k].health = 100; // Initialize plant's health
+					zms[i].speed = 0;
+					zms[i].frameIndex = 0;
+				}
+			}
+		}
+	}
+}
+
+void collisionDetection() {
+	checkBulletToZm();
+	checkZmToPlant();
 }
 
 void updateGame() {
