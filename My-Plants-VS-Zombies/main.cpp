@@ -12,6 +12,7 @@
 #include <time.h>
 #include <math.h>
 #include "tools.h"
+#include "vector2.h"
 
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
@@ -39,9 +40,14 @@ struct Plant {
 	bool caught;
 	int health;
 	int shooting; // Status of shooting or not, 0: There's 1 zombie ahead; >0: More than 1 zombies ahead
+
+	int timer;
+	int x, y;
 };
 
 struct Plant map[3][9];
+
+enum {SUNSHINE_DOWN, SUNSHINE_GROUND, SUNSHINE_COLLECT, SUNSHINE_PRODUCE};
 
 struct sunshineBall {
 	int x, y; // Coordinates for the X and Y Coord of sunshine when falling
@@ -52,6 +58,12 @@ struct sunshineBall {
 
 	float xoff;
 	float yoff;
+
+	float t; // Bezier curve timespan
+	vector2 p1, p2, p3, p4;
+	vector2 pCur; // Current sunshineball's location
+	float speed;
+	int status;
 };
 
 struct sunshineBall balls[10];
@@ -191,7 +203,7 @@ void gameInit() {
 
 	// Initialize zombie eat images
 	for (int i = 0; i < 21; i++) {
-		sprintf_s(name, "res/zm/eat/%d.png", i + 1);
+		sprintf_s(name, "res/zm_eat/%d.png", i + 1);
 		loadimage(&imgZMEat[i], name);
 	}
 }
@@ -258,6 +270,7 @@ void updateWindow() {
 			if (map[i][j].type > 0) {
 				map[i][j].x = 256 + j * 81;
 				map[i][j].y = 179 + i * 102 + 10;
+				// map[i][j].health = 100; // Initialize health
 				int PlantType = map[i][j].type - 1;
 				int index = map[i][j].frameIndex;
 				putimagePNG(map[i][j].x, map[i][j].y, imgPlants[PlantType][index]);
@@ -637,6 +650,7 @@ void checkZmToPlant() {
 
 		int row = zms[i].row;
 		for (int k = 0; k < 9; k++) {
+			// map[row][k].health = 100;
 			if (map[row][k].type == 0) continue;
 
 			int plantX = 256 + k * 81;
@@ -646,10 +660,12 @@ void checkZmToPlant() {
 			
 			if (x3 > x1 && x3 < x2) {
 				if (map[row][k].caught) {
-					zms[i].frameIndex++;
-					map[row][k].health -= 10; // Plant health deduction when been eating
-					if (map[row][k].health <= 0) {
+					//zms[i].frameIndex++;
+					//map[row][k].health -= 10; // Plant health deduction when been eating
+					map[row][k].health++;
+					if (map[row][k].health > 110) {
 						map[row][k].type = 0;
+						map[row][k].health = 0;
 						zms[i].eating = false;
 						zms[i].frameIndex = 0;
 						zms[i].speed = 1;
@@ -657,7 +673,8 @@ void checkZmToPlant() {
 				}
 				else {
 					map[row][k].caught = true;
-					map[row][k].health = 100; // Initialize plant's health
+					map[row][k].health = 0; // Initialize plant's health
+					zms[i].eating = true;
 					zms[i].speed = 0;
 					zms[i].frameIndex = 0;
 				}
