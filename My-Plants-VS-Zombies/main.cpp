@@ -246,6 +246,19 @@ void drawBullets() {
 	}
 }
 
+void drawSunshines() {
+	// Render the falling Sunshine
+	int ballMax = sizeof(balls) / sizeof(balls[0]);
+	for (int i = 0; i < ballMax; i++) {
+		//if (balls[i].used || balls[i].xoff) {
+		if (balls[i].used){
+			IMAGE* img = &imgSunshineBall[balls[i].frameIndex];
+			//putimagePNG(balls[i].x, balls[i].y, img);
+			putimagePNG(balls[i].pCur.x, balls[i].pCur.y, img);
+		}
+	}
+}
+
 // render the background image when initializing
 void updateWindow() {
 	BeginBatchDraw(); // Start double buffering
@@ -268,8 +281,8 @@ void updateWindow() {
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
 			if (map[i][j].type > 0) {
-				map[i][j].x = 256 + j * 81;
-				map[i][j].y = 179 + i * 102 + 10;
+				/*map[i][j].x = 256 + j * 81;
+				map[i][j].y = 179 + i * 102 + 10;*/
 				// map[i][j].health = 100; // Initialize health
 				int PlantType = map[i][j].type - 1;
 				int index = map[i][j].frameIndex;
@@ -284,14 +297,7 @@ void updateWindow() {
 		putimagePNG(curX - img->getwidth() / 2, curY - img->getheight() / 2, img);
 	}
 
-	// Render the falling Sunshine
-	int ballMax = sizeof(balls) / sizeof(balls[0]);
-	for (int i = 0; i < ballMax; i++) {
-		if (balls[i].used || balls[i].xoff) {
-			IMAGE* img = &imgSunshineBall[balls[i].frameIndex];
-			putimagePNG(balls[i].x, balls[i].y, img);
-		}
-	}
+	drawSunshines();
 
 	char scoreText[8];
 	sprintf_s(scoreText, sizeof(scoreText), "%d", sunshine);
@@ -311,20 +317,30 @@ void collectSunshine(ExMessage* msg) {
 	int h = imgSunshineBall[0].getheight();
 	for (int i = 0; i < count; i++) {
 		if (balls[i].used) {
-			int x = balls[i].x;
-			int y = balls[i].y;
+			/*int x = balls[i].x;
+			int y = balls[i].y;*/
+			int x = balls[i].pCur.x;
+			int y = balls[i].pCur.y;
 			if (msg->x > x && msg->x < x + w &&
 				msg->y > y && msg->y < y + h) {
 				balls[i].used = false;
+				balls[i].status = SUNSHINE_COLLECT;
 				// sunshine += 25;
 				mciSendString("play res/sunshine.mp3", 0, 0, 0);
 
 				// Setup sunshineBall's xoff and yoff
-				float destY = 0;
-				float destX = 262;
-				float angle = atan((y - destY) / (x - destX));
-				balls[i].xoff = 4 * cos(angle);
-				balls[i].yoff = 4 * sin(angle);
+				//float destY = 0;
+				//float destX = 262;
+				//float angle = atan((y - destY) / (x - destX));
+				//balls[i].xoff = 4 * cos(angle);
+				//balls[i].yoff = 4 * sin(angle);
+				balls[i].p1 = balls[i].pCur;
+				balls[i].p4 = vector2(262, 0);
+				balls[i].t = 0;
+				float distance = dis(balls[i].p1 - balls[i].p4);
+				float off = 8;
+				balls[i].speed = 1.0 / (distance / off);
+				break;
 			}
 		}
 	}
@@ -356,6 +372,9 @@ void userClick() {
 				if (map[row][col].type == 0) {
 					map[row][col].type = curPlant;
 					map[row][col].frameIndex = 0;
+
+					map[row][col].x = 256 + col * 81;
+					map[row][col].y = 179 + row * 102 + 14;
 				}
 			}
 
@@ -382,14 +401,24 @@ void createSunshine() {
 
 		balls[i].used = true;
 		balls[i].frameIndex = 0;
-		balls[i].x = 260 + rand() % (900 - 260); // 260 <-> 900
-		balls[i].y = 60;
-		balls[i].destY = 200 + (rand() % 4) * 90;
+		//balls[i].x = 260 + rand() % (900 - 260); // 260 <-> 900
+		//balls[i].y = 60;
+		//balls[i].destY = 200 + (rand() % 4) * 90;
 		balls[i].timer = 0;
-		balls[i].xoff = 0;
-		balls[i].yoff = 0;
+		//balls[i].xoff = 0;
+		//balls[i].yoff = 0;
+
+		balls[i].status = SUNSHINE_DOWN;
+		balls[i].t = 0;
+		balls[i].p1 = vector2(260 + rand() % (900 - 260), 60);
+		balls[i].p4 = vector2(balls[i].p1.x, 200 + (rand() % 4) * 90);
+		int off = 2;
+		float distance = balls[i].p4.y - balls[i].p1.y;
+		balls[i].speed = 1.0 / (distance / off);
 
 	}
+
+	// Sunflower produce sunshines ...
 }
 
 void updateSunshine() {
