@@ -42,7 +42,7 @@ struct Plant {
 	int shooting; // Status of shooting or not, 0: There's 1 zombie ahead; >0: More than 1 zombies ahead
 
 	int timer;
-	int x, y;
+	//int x, y;
 };
 
 struct Plant map[3][9];
@@ -415,47 +415,110 @@ void createSunshine() {
 		int off = 2;
 		float distance = balls[i].p4.y - balls[i].p1.y;
 		balls[i].speed = 1.0 / (distance / off);
-
 	}
 
 	// Sunflower produce sunshines ...
+	int ballMax = sizeof(balls) / sizeof(balls[0]);
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			if (map[i][j].type == Sunflower + 1) {
+				map[i][j].timer++;
+				if (map[i][j].timer > 200) {
+					map[i][j].timer = 0;
+
+					int k;
+					for (k = 0; k < ballMax && balls[k].used; k++);
+					if (k >= ballMax) return;
+
+					balls[k].used = true;
+					balls[k].p1 = vector2(map[i][j].x, map[i][j].y);
+					int w = (rand() % 2 ? 1: -1) *(100 + rand() % 50);
+					balls[k].p4 = vector2(map[i][j].x + w,
+						map[i][j].y + imgPlants[Sunflower][0]->getheight() - imgSunshineBall[0].getheight());
+					balls[k].p2 = vector2(balls[i].p1.x + w * 0.3, balls[i].p1.y - 100);
+					balls[k].p3 = vector2(balls[i].p1.x + w * 0.7, balls[i].p1.y - 100);
+					balls[k].status = SUNSHINE_PRODUCE;
+					balls[k].speed = 0.05;
+					balls[k].t = 0;
+
+				}
+			}
+		}
+	}
 }
 
 void updateSunshine() {
 	int ballMax = sizeof(balls) / sizeof(balls[0]);
 	for (int i = 0; i < ballMax; i++) {
 		if (balls[i].used) {
-			balls[i].frameIndex = (balls[i].frameIndex + 1) % 29; // Update new animation frame
-
-			if (balls[i].timer == 0) {
-				balls[i].y += 2; // Update Y-coordinates
+			balls[i].frameIndex = (balls[i].frameIndex + 1) % 29;
+			if (balls[i].status == SUNSHINE_DOWN) {
+				struct sunshineBall* sun = &balls[i];
+				sun->t += sun->speed;
+				sun->pCur = sun->p1 + sun->t * (sun->p4 - sun->p1);
+				if (sun->t >= 1) {
+					sun->status = SUNSHINE_GROUND;
+					sun->timer = 0;
+				}
 			}
-
-			// Stop at destY
-			if (balls[i].y >= balls[i].destY) {
-				// balls[i].used = false; Disappear Sunshine Code
+			else if (balls[i].status == SUNSHINE_GROUND) {
 				balls[i].timer++;
-				if (balls[i].timer > 300) {
+				if (balls[i].timer > 100) {
+					balls[i].timer = 0;
 					balls[i].used = false;
 				}
 			}
-		} // sunshineBall flying after being collected
-		else if (balls[i].xoff) {
-			// Setup sunshineBall's xoff and yoff
-			float destY = 0;
-			float destX = 262;
-			float angle = atan((balls[i].y - destY) / (balls[i].x - destX));
-			balls[i].xoff = 10 * cos(angle);
-			balls[i].yoff = 10 * sin(angle);
-
-			balls[i].x -= balls[i].xoff;
-			balls[i].y -= balls[i].yoff;
-			if (balls[i].y < 0 || balls[i].x < 262) {
-				balls[i].xoff = 0;
-				balls[i].yoff = 0;
-				sunshine += 25;
+			else if (balls[i].status == SUNSHINE_COLLECT) {
+				struct sunshineBall* sun = &balls[i];
+				sun->t += sun->speed;
+				if (sun->t > 1) {
+					sun->used = false;
+					sunshine += 25;
+				}
 			}
-		}
+			else if (balls[i].status == SUNSHINE_PRODUCE) {
+				struct sunshineBall* sun = &balls[i];
+				sun->t += sun->speed;
+				sun->pCur = calcBezierPoint(sun->t, sun->p1, sun->p2, sun->p3, sun->p4);
+				if (sun->t > 1) {
+					sun->status = SUNSHINE_GROUND;
+					sun->timer = 0; 
+				}
+			}
+
+ 
+			//balls[i].frameIndex = (balls[i].frameIndex + 1) % 29; // Update new animation frame
+
+			//if (balls[i].timer == 0) {
+			//	balls[i].y += 2; // Update Y-coordinates
+			//}
+
+			//// Stop at destY
+			//if (balls[i].y >= balls[i].destY) {
+			//	// balls[i].used = false; Disappear Sunshine Code
+			//	balls[i].timer++;
+			//	if (balls[i].timer > 300) {
+			//		balls[i].used = false;
+			//	}
+			//}
+
+		} // sunshineBall flying after being collected
+		//else if (balls[i].xoff) {
+		//	// Setup sunshineBall's xoff and yoff
+		//	float destY = 0;
+		//	float destX = 262;
+		//	float angle = atan((balls[i].y - destY) / (balls[i].x - destX));
+		//	balls[i].xoff = 10 * cos(angle);
+		//	balls[i].yoff = 10 * sin(angle);
+
+		//	balls[i].x -= balls[i].xoff;
+		//	balls[i].y -= balls[i].yoff;
+		//	if (balls[i].y < 0 || balls[i].x < 262) {
+		//		balls[i].xoff = 0;
+		//		balls[i].yoff = 0;
+		//		sunshine += 25;
+		//	}
+		//}
 	}
 }
 
