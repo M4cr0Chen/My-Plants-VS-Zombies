@@ -29,6 +29,7 @@ enum {Peashooter, Sunflower, Plant_Count};
 IMAGE imgBg; // variable for background image
 IMAGE imgBar; // variable for plant choose bar image
 IMAGE imgCards[Plant_Count];
+IMAGE imgBlackCards[Plant_Count]; // cards for non-purchaseable cards
 IMAGE* imgPlants[Plant_Count][20];
 
 int curX, curY; // coordinate during dragging of the currently selected plant
@@ -129,10 +130,14 @@ void gameInit() {
 
 	// Initialize Plant Cards
 	char name[64];
+	char black_name[64];
 	for (int i = 0; i < Plant_Count; i++) {
 		// Generate File names for plants
 		sprintf_s(name, sizeof(name), "res/Cards/card_%d.png", i + 1);
 		loadimage(&imgCards[i], name); // name, address
+
+		sprintf_s(black_name, sizeof(black_name), "res/Cards_black/%d.png", i + 1);
+		loadimage(&imgBlackCards[i], black_name);
 
 		for (int j = 0; j < 20; j++) {
 			sprintf_s(name, sizeof(name), "res/plants_animations/%d/%d.png", i, j + 1);
@@ -257,26 +262,41 @@ void drawSunshines() {
 			putimagePNG(balls[i].pCur.x, balls[i].pCur.y, img);
 		}
 	}
+
+	// Update sunshine scores
+	char scoreText[8];
+	sprintf_s(scoreText, sizeof(scoreText), "%d", sunshine);
+	outtextxy(280, 67, scoreText); // Output Score
 }
 
-// render the background image when initializing
-void updateWindow() {
-	BeginBatchDraw(); // Start double buffering
+int cardPrice(int curPlant) {
+	switch (curPlant) {
+	case 1:
+		return 100;
+		break;
+	case 2:
+		return 50;
+		break;
+	}
+}
 
-	putimage(0, 0, &imgBg); // putimage(leftup_x, leftup_y, IMAGE);
-	//putimage(250, 0, &imgBar);
-	putimagePNG(250, 0, &imgBar); //putimagePNG removes the black edges of the PNG
-	
+void drawCards() {
 	// iteratively render the plant cards one-by-one
 	for (int i = 0; i < Plant_Count; i++) {
 		int x = 338 + i * 65;
 		// 338 -> x value of the first card | 65 is width of each card img
 
 		int y = 6;
-		putimage(x, y, &imgCards[i]);
+		if (sunshine >= cardPrice(i+1)) {
+			putimage(x, y, &imgCards[i]);
+		}
+		else {
+			putimage(x, y, &imgBlackCards[i]);
+		}
 	}
+}
 
-	
+void drawPlants() {
 	// Render plants putted to the block
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
@@ -296,13 +316,19 @@ void updateWindow() {
 		IMAGE* img = imgPlants[curPlant - 1][0];
 		putimagePNG(curX - img->getwidth() / 2, curY - img->getheight() / 2, img);
 	}
+}
 
+// render the background image when initializing
+void updateWindow() {
+	BeginBatchDraw(); // Start double buffering
+
+	putimage(0, 0, &imgBg); // putimage(leftup_x, leftup_y, IMAGE);
+	//putimage(250, 0, &imgBar);
+	putimagePNG(250, 0, &imgBar); //putimagePNG removes the black edges of the PNG
+	
+	drawCards();
+	drawPlants();
 	drawSunshines();
-
-	char scoreText[8];
-	sprintf_s(scoreText, sizeof(scoreText), "%d", sunshine);
-	outtextxy(280, 67, scoreText); // Output Score
-
 
 	drawZM(); // Render zombie movement
 
@@ -323,10 +349,10 @@ void collectSunshine(ExMessage* msg) {
 			int y = balls[i].pCur.y;
 			if (msg->x > x && msg->x < x + w &&
 				msg->y > y && msg->y < y + h) {
-				balls[i].used = false;
+				//balls[i].used = false;
 				balls[i].status = SUNSHINE_COLLECT;
 				// sunshine += 25;
-				mciSendString("play res/sunshine.mp3", 0, 0, 0);
+				PlaySound("res/sunshine.wav", NULL, SND_FILENAME | SND_ASYNC);
 
 				// Setup sunshineBall's xoff and yoff
 				//float destY = 0;
@@ -349,22 +375,60 @@ void collectSunshine(ExMessage* msg) {
 void userClick() {
 	ExMessage msg;
 	static int status = 0; // plant selection status
+	static int clicked = 0; // plant hover on cursor or not
 	if (peekmessage(&msg)) {
 		if (msg.message == WM_LBUTTONDOWN) {
-			if (msg.x > 338 && msg.x < 388 + 65 * Plant_Count && msg.y < 96) {
-				int index = (msg.x - 338) / 65;
-				status = 1;
-				curPlant = index + 1;
+
+			// first click
+			if (clicked == 0) {
+				if (msg.x > 338 && msg.x < 388 + 65 * Plant_Count && msg.y < 96) {
+					int index = (msg.x - 338) / 65;
+
+					// see if purchaseable
+					if (sunshine >= cardPrice(index + 1)) {
+						status = 1;
+						clicked = 1;
+						curPlant = index + 1;
+					}
+					else {
+						status = 0;
+						clicked = 0;
+						curPlant = 0;
+					}
+					
+				}
+				else {
+					collectSunshine(&msg);
+				}
 			}
-			else {
-				collectSunshine(&msg);
+			else { // else when clicked = 1
+
+				// only do the following when second click falls inside the lawn
+				if (msg.x > 255 && msg.y > 179 && msg.y < 489) {
+					int row = (msg.y - 179) / 102;
+					int col = (msg.x - 256) / 81;
+
+					if (map[row][col].type == 0) {
+						map[row][col].type = curPlant;
+						map[row][col].frameIndex = 0;
+
+						map[row][col].x = 256 + col * 81;
+						map[row][col].y = 179 + row * 102 + 14;
+
+						sunshine -= cardPrice(curPlant);
+					}
+				}
+
+				curPlant = 0;
+				status = 0;
+				clicked = 0;
 			}
 		}
 		else if (msg.message == WM_MOUSEMOVE && status == 1) {
 			curX = msg.x;
 			curY = msg.y;
 		}
-		else if (msg.message == WM_LBUTTONUP) {
+		/*else if (msg.message == WM_LBUTTONUP) {
 			if (msg.x > 255 && msg.y > 179 && msg.y < 489) {
 				int row = (msg.y - 179) / 102;
 				int col = (msg.x - 256) / 81;
@@ -375,12 +439,14 @@ void userClick() {
 
 					map[row][col].x = 256 + col * 81;
 					map[row][col].y = 179 + row * 102 + 14;
+					
+					sunshine -= cardPrice(curPlant);
 				}
 			}
 
 			curPlant = 0;
 			status = 0;
-		}
+		}*/
 	}
 }
 
@@ -389,7 +455,7 @@ void createSunshine() {
 	static int freq = 400;
 	count++;
 	if (count >= freq) {
-		freq = 200 + rand() % 200;
+		freq = 400 + rand() % 200;
 		count = 0;
 
 		// Get one available sunshine from the pool
@@ -423,7 +489,7 @@ void createSunshine() {
 		for (int j = 0; j < 3; j++) {
 			if (map[i][j].type == Sunflower + 1) {
 				map[i][j].timer++;
-				if (map[i][j].timer > 200) {
+				if (map[i][j].timer > 500) {
 					map[i][j].timer = 0;
 
 					int k;
@@ -435,12 +501,11 @@ void createSunshine() {
 					int w = (rand() % 2 ? 1: -1) *(100 + rand() % 50);
 					balls[k].p4 = vector2(map[i][j].x + w,
 						map[i][j].y + imgPlants[Sunflower][0]->getheight() - imgSunshineBall[0].getheight());
-					balls[k].p2 = vector2(balls[i].p1.x + w * 0.3, balls[i].p1.y - 100);
-					balls[k].p3 = vector2(balls[i].p1.x + w * 0.7, balls[i].p1.y - 100);
+					balls[k].p2 = vector2(balls[k].p1.x + w * 0.3, balls[k].p1.y - 100);
+					balls[k].p3 = vector2(balls[k].p1.x + w * 0.7, balls[k].p1.y - 100);
 					balls[k].status = SUNSHINE_PRODUCE;
 					balls[k].speed = 0.05;
 					balls[k].t = 0;
-
 				}
 			}
 		}
@@ -471,6 +536,7 @@ void updateSunshine() {
 			else if (balls[i].status == SUNSHINE_COLLECT) {
 				struct sunshineBall* sun = &balls[i];
 				sun->t += sun->speed;
+				sun->pCur = sun->p1 + sun->t * (sun->p4 - sun->p1);
 				if (sun->t > 1) {
 					sun->used = false;
 					sunshine += 25;
@@ -548,7 +614,7 @@ void createZM() {
 	}
 }
 
-void updateZM() {
+void updateZMs() {
 	int zmMax = sizeof(zms) / sizeof(zms[0]);
 
 	static int count = 0;
@@ -556,7 +622,7 @@ void updateZM() {
 	count++;
 
 	// Zombie's frequency each step to the other
-	if (count >= 3) {
+	if (count > 3 * 2) {
 		count = 0;
 
 		// Update zombies' location
@@ -577,7 +643,7 @@ void updateZM() {
 	zombieCount++;
 
 	// Zombie's animation speed
-	if (zombieCount > 4) {
+	if (zombieCount > 4 * 2) {
 		zombieCount = 0;
 
 		// Update zombie frameIndex
@@ -605,6 +671,10 @@ void updateZM() {
 }
 
 void shoot() {
+	static int count = 0;
+	if (++count < 2)return;
+	count = 0;
+
 	int lines[3] = { 0 };
 	int zombiesCount = sizeof(zms) / sizeof(zms[0]);
 	int bulletMax = sizeof(bullets) / sizeof(bullets[0]);
@@ -686,6 +756,10 @@ void shoot() {
 }
 
 void updateBullets() {
+	static int count = 0;
+	if (++count < 2)return;
+	count = 0;
+
 	int countMax = sizeof(bullets) / sizeof(bullets[0]);
 	for (int i = 0; i < countMax; i++) {
 		if (bullets[i].used) {
@@ -780,7 +854,10 @@ void collisionDetection() {
 	checkZmToPlant();
 }
 
-void updateGame() {
+void updatePlants() {
+	static int count = 0;
+	if (++count < 3) return;
+	count = 0;
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 9; j++) {
 			if (map[i][j].type > 0) {
@@ -793,12 +870,16 @@ void updateGame() {
 			}
 		}
 	}
+}
+
+void updateGame() {
+	updatePlants();
 
 	createSunshine(); // Generate Sunshine
 	updateSunshine(); // Update Sunshine Status
 	
 	createZM(); // Generate Zombies
-	updateZM(); // Update Zombies Status
+	updateZMs(); // Update Zombies Status
 
 	shoot(); // Shoot peas bullet
 	updateBullets(); // Update bullet status
@@ -851,7 +932,7 @@ int main(void) {
 	while (1) {
 		userClick(); // deal with user's inputs
 		timer += getDelay();
-		if (timer > 30) {
+		if (timer > 10) {
 			flag = true;
 			timer = 0;
 		}
