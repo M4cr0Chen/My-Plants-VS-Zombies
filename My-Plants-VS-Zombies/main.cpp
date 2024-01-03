@@ -87,6 +87,7 @@ struct zm zms[10];
 IMAGE imgZM[22]; // zombie walking frames
 IMAGE imgZMDead[10]; // zombie dead frames
 IMAGE imgZMEat[21]; // zommbie eating frames
+IMAGE imgZMStand[11]; // zombie standing frames
 
 
 // Data Structure for the bullet
@@ -210,6 +211,12 @@ void gameInit() {
 	for (int i = 0; i < 21; i++) {
 		sprintf_s(name, "res/zm_eat/%d.png", i + 1);
 		loadimage(&imgZMEat[i], name);
+	}
+
+	// Initialize zombie stand images
+	for (int i = 0; i < 11; i++) {
+		sprintf_s(name, sizeof(name), "res/zm_stand/%d.png", i + 1);
+		loadimage(&imgZMStand[i], name);
 	}
 }
 
@@ -912,7 +919,8 @@ void startUI() {
 				flag = 1;
 			}
 			else if (msg.message == WM_LBUTTONUP && flag) {
-				return;
+				EndBatchDraw();
+				break;
 			}
 		}
 
@@ -920,12 +928,81 @@ void startUI() {
 	}
 }
 
+void viewScene() {
+	int xMin = WIN_WIDTH - imgBg.getwidth();
+
+	vector2 points[9] = {
+		{570, 80}, {540,150}, {600, 170}, {565,370}, {605, 340}, {705, 280}, {515, 270}, {680, 350}, {520,280}
+	};
+
+	int index[9];
+
+	for (int i = 0; i < 9; i++) {
+		index[i] = rand() % 11;
+	}
+	int count = 0;
+	for (int x = 0; x >= xMin; x -= 2) {
+		BeginBatchDraw();
+		putimage(x, 0, &imgBg);
+
+		count++;
+
+		for (int k = 0; k < 9; k++) {
+			putimagePNG(points[k].x - xMin + x, points[k].y, &imgZMStand[index[k]]);
+			if (count >= 10) {
+				index[k] = (index[k] + 1) % 11;
+			}
+		}
+
+		if (count >= 10) {
+			count = 0;
+		}
+
+		EndBatchDraw();
+		Sleep(5);
+	}
+
+	// Remain for a while
+	for (int i = 0; i < 100; i++) {
+		BeginBatchDraw();
+
+		putimage(xMin, 0, &imgBg);
+		for (int k = 0; k < 9; k++) {
+			putimagePNG(points[k].x, points[k].y, &imgZMStand[index[k]]);
+			index[k] = (index[k] + 1) % 11;
+		}
+
+		EndBatchDraw();
+		Sleep(20);
+	}
+
+	for (int x = xMin; x <= 0; x += 2) {
+		BeginBatchDraw();
+
+		putimage(x, 0, &imgBg);
+		
+		count++;
+		for (int k = 0; k < 9; k++) {
+			putimagePNG(points[k].x-xMin + x, points[k].y, &imgZMStand[index[k]]);
+			if (count >= 10) {
+				index[k] = (index[k] + 1) % 11;
+			}
+
+			if (count >= 10) count = 0;
+		}
+
+		EndBatchDraw();
+		Sleep(5);
+	}
+}
 
 // main function of the program
 int main(void) {
 	gameInit(); // initialize game
 
 	startUI(); // intialize start UI
+
+	viewScene();
 
 	int timer = 0;
 	bool flag = true;
